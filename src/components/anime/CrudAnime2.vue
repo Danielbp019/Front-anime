@@ -1,13 +1,17 @@
 <template>
-    <v-data-table :headers="headers" :items="animes">
+    <v-data-table :headers="headers" :items="filteredAnimes" :items-per-page="5" :loading="loading"
+        :sort-by="[{ key: 'Nombre', order: 'asc' }]">
         <template v-slot:top>
             <v-toolbar flat>
                 <v-toolbar-title>Lista de animes</v-toolbar-title>
-                <v-divider class="mx-4" inset vertical></v-divider>
+
+                <v-text-field v-model="search" label="Buscar por nombre" prepend-inner-icon="mdi-magnify"
+                    variant="outlined" hide-details single-line></v-text-field>
+
                 <v-spacer></v-spacer>
                 <v-dialog v-model="dialog" max-width="500px">
                     <template v-slot:activator="{ props }">
-                        <v-btn class="mb-2" color="primary" dark v-bind="props">
+                        <v-btn class="ms-auto" color="primary" dark v-bind="props">
                             Nuevo anime
                         </v-btn>
                     </template>
@@ -26,7 +30,7 @@
                                 <v-row>
                                     <v-col cols="12">
                                         <v-text-field v-model="editedItem.numero_capitulos"
-                                            label="numero_capitulos"></v-text-field>
+                                            label="numero de capitulos"></v-text-field>
                                     </v-col>
                                 </v-row>
                                 <v-row>
@@ -36,8 +40,7 @@
                                 </v-row>
                                 <v-row>
                                     <v-col cols="12">
-                                        <v-text-field v-model="editedItem.comentarios"
-                                            label="comentarios"></v-text-field>
+                                        <v-textarea v-model="editedItem.comentarios" label="comentarios"></v-textarea>
                                     </v-col>
                                 </v-row>
                             </v-container>
@@ -76,114 +79,115 @@
                 mdi-delete
             </v-icon>
         </template>
-        <template v-slot:no-data>
-            <v-btn color="primary" @click="initialize">
-                Reset
-            </v-btn>
-        </template>
     </v-data-table>
 </template>
-<script>
+
+<script setup lang="ts">
+import { ref, watch, onMounted, computed } from 'vue';
 import api from '@/api/api';
 
-export default {
-    data: () => ({
-        dialog: false,
-        dialogDelete: false,
-        headers: [
-            { title: 'Nombre', key: 'nombre' },
-            { title: 'Número de Capítulos', key: 'numero_capitulos' },
-            { title: 'Visto', key: 'visto' },
-            { title: 'Comentarios', key: 'comentarios' },
-            { title: 'Acciones', key: 'actions', sortable: false },
-        ],
-        animes: [],
-        editedIndex: -1,
-        editedItem: {
-            id: '',
-            nombre: '',
-            numero_capitulos: '',
-            visto: '',
-            comentarios: '',
-        },
-        defaultItem: {
-            id: '',
-            nombre: '',
-            numero_capitulos: '',
-            visto: '',
-            comentarios: '',
-        },
-    }),
+const dialog = ref(false);
+const dialogDelete = ref(false);
+const loading = ref(false);
+const search = ref('');
+const headers = [
+    { title: 'Nombre', key: 'nombre' },
+    { title: 'Número de Capítulos', key: 'numero_capitulos' },
+    { title: 'Visto', key: 'visto' },
+    { title: 'Comentarios', key: 'comentarios' },
+    { title: 'Acciones', key: 'actions', sortable: false },
+];
+const animes = ref([]);
+let editedIndex = -1;
+const editedItem = ref({
+    id: '',
+    nombre: '',
+    numero_capitulos: '',
+    visto: '',
+    comentarios: '',
+});
+const defaultItem = {
+    id: '',
+    nombre: '',
+    numero_capitulos: '',
+    visto: '',
+    comentarios: '',
+};
 
-    computed: {
-        formTitle() {
-            return this.editedIndex === -1 ? 'Nuevo Anime' : 'Editar Anime'
-        },
-    },
+const formTitle = computed(() => (editedIndex === -1 ? 'Nuevo Anime' : 'Editar Anime'));
 
-    watch: {
-        dialog(val) {
-            val || this.close()
-        },
-        dialogDelete(val) {
-            val || this.closeDelete()
-        },
-    },
+const filteredAnimes = computed(() => {
+    return animes.value.filter(anime => anime.nombre.toLowerCase().includes(search.value.toLowerCase()));
+});
 
-    created() {
-        this.initialize()
-    },
+watch(dialog, (val) => {
+    if (!val) close();
+});
+watch(dialogDelete, (val) => {
+    if (!val) closeDelete();
+});
 
-    methods: {
-        async initialize() {
-            const response = await api.getAllAnimes()
-            this.animes = response.data
-        },
+onMounted(async () => {
+    try {
+        loading.value = true;
+        const response = await api.getAllAnimes();
+        animes.value = response.data;
+        loading.value = false;
+    } catch (error) {
+        console.error('Error obteniendo animes:', error);
+        loading.value = false;
+    }
+});
 
-        editItem(item) {
-            this.editedIndex = this.animes.indexOf(item)
-            this.editedItem = Object.assign({}, item)
-            this.dialog = true
-        },
+const editItem = (item) => {
+    editedIndex = animes.value.indexOf(item);
+    editedItem.value = { ...item };
+    dialog.value = true;
+};
 
-        deleteItem(item) {
-            this.editedIndex = this.animes.indexOf(item)
-            this.editedItem = Object.assign({}, item)
-            this.dialogDelete = true
-        },
+const deleteItem = (item) => {
+    editedIndex = animes.value.indexOf(item);
+    editedItem.value = { ...item };
+    dialogDelete.value = true;
+};
 
-        async deleteItemConfirm() {
-            await api.deleteAnime(this.editedItem.id)
-            this.animes.splice(this.editedIndex, 1)
-            this.closeDelete()
-        },
+const deleteItemConfirm = async () => {
+    try {
+        await api.deleteAnime(editedItem.value.id);
+        animes.value.splice(editedIndex, 1);
+        closeDelete();
+    } catch (error) {
+        console.error(`Error borrando anime con la id ${editedItem.value.id}:`, error);
+    }
+};
 
-        close() {
-            this.dialog = false
-            this.$nextTick(() => {
-                this.editedItem = Object.assign({}, this.defaultItem)
-                this.editedIndex = -1
-            })
-        },
+const close = () => {
+    dialog.value = false;
+    editedItem.value = { ...defaultItem };
+    editedIndex = -1;
+};
 
-        closeDelete() {
-            this.dialogDelete = false
-            this.$nextTick(() => {
-                this.editedItem = Object.assign({}, this.defaultItem)
-                this.editedIndex = -1
-            })
-        },
+const closeDelete = () => {
+    dialogDelete.value = false;
+    editedItem.value = { ...defaultItem };
+    editedIndex = -1;
+};
 
-        async save() {
-            if (this.editedIndex > -1) {
-                await api.updateAnime(this.editedItem.id, this.editedItem)
-                Object.assign(this.animes[this.editedIndex], this.editedItem)
-            } else {
-                const response = await api.createAnime(this.editedItem)
-                this.animes.push(response.data)
-            }
-            this.close()
-        },
-    },
-}
+const save = async () => {
+    try {
+        if (editedIndex > -1) {
+            await api.updateAnime(editedItem.value.id, editedItem.value);
+            Object.assign(animes.value[editedIndex], editedItem.value);
+        } else {
+            const response = await api.createAnime(editedItem.value);
+            // Accede a la propiedad 'nuevoAnime' de la respuesta
+            const nuevoAnime = response.data.nuevoAnime;
+            animes.value.push(nuevoAnime);
+        }
+        close();
+    } catch (error) {
+        console.error('Error guardando anime:', error);
+    }
+};
+
 </script>
