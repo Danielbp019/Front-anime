@@ -1,6 +1,6 @@
 <template>
   <!-- <HelloWorld /> -->
-  <CrudAnime2 />
+  <CrudAnime />
 </template>
 
 <script lang="ts" setup>
